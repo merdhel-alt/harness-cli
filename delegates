@@ -1,0 +1,193 @@
+
+#Creating VPC and Subnets
+
+#Availability Zone
+
+provider "aws" {
+  region = "ap-southeast-1"
+}
+
+
+#VPC with /24 CIDR
+
+resource "aws_vpc" "VPCmine" {
+  cidr_block = "10.0.0.0/24"
+
+    tags = {
+    Name = "VPCmine"
+  }
+}
+
+
+#Four Subnets with /26 carve outs
+
+# Public Subnet1
+resource "aws_subnet" "public_subnet1" {
+  vpc_id = aws_vpc.VPCmine.id
+  cidr_block = "10.0.0.0/26"
+  availability_zone = "ap-southeast-1a"
+  map_public_ip_on_launch = true
+
+   tags = {
+   Name = "public_subnet1"
+  }
+}
+
+
+# Public Subnet2
+resource "aws_subnet" "public_subnet2" {
+  vpc_id = aws_vpc.VPCmine.id
+  cidr_block = "10.0.0.64/26"
+  availability_zone = "ap-southeast-1b"
+  map_public_ip_on_launch = true
+  
+   tags = {
+   Name = "public_subnet2"
+  }
+}
+
+
+# Private Subnet1
+resource "aws_subnet" "private_subnet1" {
+  vpc_id = aws_vpc.VPCmine.id
+  cidr_block = "10.0.0.128/26"
+  availability_zone = "ap-southeast-1a"
+  map_public_ip_on_launch = true
+
+   tags = {
+   Name = "private_subnet1"
+  }
+}
+
+
+# Private Subnet2
+resource "aws_subnet" "private_subnet2" {
+  vpc_id = aws_vpc.VPCmine.id
+  cidr_block = "10.0.0.192/26"
+  availability_zone = "ap-southeast-1b"
+  map_public_ip_on_launch = true
+
+  tags = {
+   Name = "private_subnet2"
+  }
+}
+
+# Create Instance
+
+# Add any additional security group rules as needed
+
+resource "aws_security_group" "TestSG" {
+  name_prefix = "TestSG"
+  vpc_id = aws_vpc.VPCmine.id
+}
+
+ 
+
+resource "aws_instance" "MyServer" {
+  ami           = "ami-062508d30d9f2cb68" # Update with desired AMI ID
+  instance_type = "t2.micro"
+  subnet_id     = aws_subnet.private_subnet1.id
+  security_groups = [aws_security_group.TestSG.id]
+
+ 
+
+  tags = {
+  Name = "MyServer"
+  }
+}
+
+# Internet Gateway
+resource "aws_internet_gateway" "my_igw" {
+  vpc_id = aws_vpc.VPCmine.id
+}
+
+ 
+
+resource "aws_main_route_table_association" "main" {
+  vpc_id         = aws_vpc.VPCmine.id
+  route_table_id = aws_vpc.VPCmine.main_route_table_id
+}
+
+ 
+
+resource "aws_route" "internet_gateway" {
+  route_table_id         = aws_vpc.VPCmine.main_route_table_id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = aws_internet_gateway.my_igw.id
+}
+
+# Creating ALB 
+
+resource "aws_lb" "example" {
+  name               = "mytest-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.TestSG.id]
+  subnets            = [aws_subnet.public_subnet1.id, aws_subnet.public_subnet2.id]
+
+ 
+
+  enable_deletion_protection = false
+
+ 
+
+  enable_http2 = true
+}
+
+# Creating WAF
+
+resource "aws_wafv2_web_acl" "example" {
+  name  = "managed-rule-example"
+  scope = "REGIONAL"
+
+ 
+
+  default_action {
+    allow {}
+  }
+
+ 
+
+  rule {
+    name     = "rule-1"
+    priority = 1
+
+ 
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+ 
+
+    override_action {
+      count {}
+    }
+
+ 
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "friendly-rule-metric-name"
+      sampled_requests_enabled   = true
+    }
+  }
+
+ 
+
+  tags = {
+    Tag1 = "Value1"
+    Tag2 = "Value2"
+  }
+
+ 
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "friendly-metric-name"
+    sampled_requests_enabled   = true
+  }
+}
